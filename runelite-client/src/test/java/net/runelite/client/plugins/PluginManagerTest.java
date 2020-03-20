@@ -38,6 +38,7 @@ import java.applet.Applet;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -47,8 +48,9 @@ import java.util.Set;
 import net.runelite.api.Client;
 import net.runelite.client.RuneLite;
 import net.runelite.client.RuneLiteModule;
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigItem;
 import net.runelite.client.eventbus.EventBus;
-import net.runelite.client.rs.ClientUpdateCheckMode;
 import static org.junit.Assert.assertEquals;
 import org.junit.Before;
 import org.junit.Rule;
@@ -56,7 +58,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class PluginManagerTest
@@ -75,18 +77,22 @@ public class PluginManagerTest
 	public Client client;
 
 	private Set<Class> pluginClasses;
+	private Set<Class> configClasses;
 
 	@Before
 	public void before() throws IOException
 	{
 		Injector injector = Guice.createInjector(Modules
-			.override(new RuneLiteModule(ClientUpdateCheckMode.AUTO, true))
+			.override(new RuneLiteModule(() -> null, true,
+				RuneLite.DEFAULT_SESSION_FILE,
+				RuneLite.DEFAULT_CONFIG_FILE))
 			.with(BoundFieldModule.of(this)));
 
 		RuneLite.setInjector(injector);
 
-		// Find plugins we expect to have
+		// Find plugins and configs we expect to have
 		pluginClasses = new HashSet<>();
+		configClasses = new HashSet<>();
 		Set<ClassInfo> classes = ClassPath.from(getClass().getClassLoader()).getTopLevelClassesRecursive(PLUGIN_PACKAGE);
 		for (ClassInfo classInfo : classes)
 		{
@@ -95,9 +101,14 @@ public class PluginManagerTest
 			if (pluginDescriptor != null)
 			{
 				pluginClasses.add(clazz);
+				continue;
+			}
+
+			if (Config.class.isAssignableFrom(clazz))
+			{
+				configClasses.add(clazz);
 			}
 		}
-
 	}
 
 	@Test
@@ -135,7 +146,9 @@ public class PluginManagerTest
 	{
 		List<Module> modules = new ArrayList<>();
 		modules.add(new GraphvizModule());
-		modules.add(new RuneLiteModule(ClientUpdateCheckMode.AUTO, true));
+		modules.add(new RuneLiteModule(() -> null, true,
+			RuneLite.DEFAULT_SESSION_FILE,
+			RuneLite.DEFAULT_CONFIG_FILE));
 
 		PluginManager pluginManager = new PluginManager(true, null, null, null, null, null);
 		pluginManager.loadCorePlugins();
@@ -152,6 +165,39 @@ public class PluginManagerTest
 			grapher.setOut(out);
 			grapher.setRankdir("TB");
 			grapher.graph(injector);
+		}
+	}
+
+	@Test
+	public void ensureNoDuplicateConfigKeyNames()
+	{
+		for (final Class clazz : configClasses)
+		{
+			final Set<String> configKeyNames = new HashSet<>();
+
+			for (final Method method : clazz.getMethods())
+			{
+				if (!method.isDefault())
+				{
+					continue;
+				}
+
+				final ConfigItem annotation = method.getAnnotation(ConfigItem.class);
+
+				if (annotation == null)
+				{
+					continue;
+				}
+
+				final String configKeyName = annotation.keyName();
+
+				if (configKeyNames.contains(configKeyName))
+				{
+					throw new IllegalArgumentException("keyName " + configKeyName + " is duplicated in " + clazz);
+				}
+
+				configKeyNames.add(configKeyName);
+			}
 		}
 	}
 

@@ -114,7 +114,7 @@ class OpponentInfoOverlay extends Overlay
 			lastMaxHealth = null;
 			if (opponent instanceof NPC)
 			{
-				lastMaxHealth = npcManager.getHealth(opponentName, opponent.getCombatLevel());
+				lastMaxHealth = npcManager.getHealth(((NPC) opponent).getId());
 			}
 			else if (opponent instanceof Player)
 			{
@@ -130,7 +130,7 @@ class OpponentInfoOverlay extends Overlay
 			}
 
 			final Actor opponentsOpponent = opponent.getInteracting();
-			if (opponentsOpponent != null
+			if (opponent instanceof NPC && opponentsOpponent != null
 				&& (opponentsOpponent != client.getLocalPlayer() || client.getVar(Varbits.MULTICOMBAT_AREA) == 1))
 			{
 				opponentsOpponentName = Text.removeTags(opponentsOpponent.getName());
@@ -151,8 +151,8 @@ class OpponentInfoOverlay extends Overlay
 		panelComponent.getChildren().clear();
 
 		// Opponent name
-		int textWidth = Math.max(ComponentConstants.STANDARD_WIDTH, fontMetrics.stringWidth(opponentName));
-		panelComponent.setPreferredSize(new Dimension(textWidth, 0));
+		int panelWidth = Math.max(ComponentConstants.STANDARD_WIDTH, fontMetrics.stringWidth(opponentName) + ComponentConstants.STANDARD_BORDER + ComponentConstants.STANDARD_BORDER);
+		panelComponent.setPreferredSize(new Dimension(panelWidth, 0));
 		panelComponent.getChildren().add(TitleComponent.builder()
 			.text(opponentName)
 			.build());
@@ -164,7 +164,10 @@ class OpponentInfoOverlay extends Overlay
 			progressBarComponent.setBackgroundColor(HP_RED);
 			progressBarComponent.setForegroundColor(HP_GREEN);
 
-			if (lastMaxHealth != null && !opponentInfoConfig.showPercent())
+			final HitpointsDisplayStyle displayStyle = opponentInfoConfig.hitpointsDisplayStyle();
+
+			if ((displayStyle == HitpointsDisplayStyle.HITPOINTS || displayStyle == HitpointsDisplayStyle.BOTH)
+				&& lastMaxHealth != null)
 			{
 				// This is the reverse of the calculation of healthRatio done by the server
 				// which is: healthRatio = 1 + (healthScale - 1) * health / maxHealth (if health > 0, 0 otherwise)
@@ -194,11 +197,15 @@ class OpponentInfoOverlay extends Overlay
 						// so we know nothing about the upper limit except that it can't be higher than maxHealth
 						maxHealth = lastMaxHealth;
 					}
-					// Take the average of min and max possible healts
+					// Take the average of min and max possible healths
 					health = (minHealth + maxHealth + 1) / 2;
 				}
 
-				progressBarComponent.setLabelDisplayMode(ProgressBarComponent.LabelDisplayMode.FULL);
+				// Show both the hitpoint and percentage values if enabled in the config
+				final ProgressBarComponent.LabelDisplayMode progressBarDisplayMode = displayStyle == HitpointsDisplayStyle.BOTH ?
+					ProgressBarComponent.LabelDisplayMode.BOTH : ProgressBarComponent.LabelDisplayMode.FULL;
+
+				progressBarComponent.setLabelDisplayMode(progressBarDisplayMode);
 				progressBarComponent.setMaximum(lastMaxHealth);
 				progressBarComponent.setValue(health);
 			}
@@ -214,8 +221,8 @@ class OpponentInfoOverlay extends Overlay
 		// Opponents opponent
 		if (opponentsOpponentName != null && opponentInfoConfig.showOpponentsOpponent())
 		{
-			textWidth = Math.max(textWidth, fontMetrics.stringWidth(opponentsOpponentName));
-			panelComponent.setPreferredSize(new Dimension(textWidth, 0));
+			panelWidth = Math.max(panelWidth, fontMetrics.stringWidth(opponentsOpponentName) + ComponentConstants.STANDARD_BORDER + ComponentConstants.STANDARD_BORDER);
+			panelComponent.setPreferredSize(new Dimension(panelWidth, 0));
 			panelComponent.getChildren().add(TitleComponent.builder()
 				.text(opponentsOpponentName)
 				.build());

@@ -37,12 +37,6 @@ import lombok.Setter;
 
 public class PanelComponent implements LayoutableRenderableEntity
 {
-	public enum Orientation
-	{
-		HORIZONTAL,
-		VERTICAL;
-	}
-
 	@Getter
 	private final Rectangle bounds = new Rectangle();
 
@@ -60,7 +54,7 @@ public class PanelComponent implements LayoutableRenderableEntity
 	private final List<LayoutableRenderableEntity> children = new ArrayList<>();
 
 	@Setter
-	private Orientation orientation = Orientation.VERTICAL;
+	private ComponentOrientation orientation = ComponentOrientation.VERTICAL;
 
 	@Setter
 	private int wrapping = -1;
@@ -142,7 +136,7 @@ public class PanelComponent implements LayoutableRenderableEntity
 			totalWidth = Math.max(totalWidth, width);
 			totalHeight = Math.max(totalHeight, height);
 
-			if (wrapping > 0 && i < children.size() - 1 && (i + 1)  % wrapping == 0)
+			if (wrapping > 0 && i < children.size() - 1 && (i + 1) % wrapping == 0)
 			{
 				switch (orientation)
 				{
@@ -169,8 +163,14 @@ public class PanelComponent implements LayoutableRenderableEntity
 		}
 
 		// Remove last child gap
-		totalWidth -= gap.x;
-		totalHeight -= gap.y;
+		if (orientation == ComponentOrientation.HORIZONTAL)
+		{
+			totalWidth -= gap.x;
+		}
+		else // VERTICAL
+		{
+			totalHeight -= gap.y;
+		}
 
 		// Cache children bounds
 		childDimensions.setSize(totalWidth, totalHeight);

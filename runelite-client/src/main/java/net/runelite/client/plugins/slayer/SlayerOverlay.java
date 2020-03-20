@@ -62,6 +62,8 @@ class SlayerOverlay extends WidgetItemOverlay
 		ItemID.RED_SLAYER_HELMET_I,
 		ItemID.TURQUOISE_SLAYER_HELMET,
 		ItemID.TURQUOISE_SLAYER_HELMET_I,
+		ItemID.TWISTED_SLAYER_HELMET,
+		ItemID.TWISTED_SLAYER_HELMET_I,
 		ItemID.HYDRA_SLAYER_HELMET,
 		ItemID.HYDRA_SLAYER_HELMET_I,
 		ItemID.SLAYER_RING_ETERNAL,
@@ -132,7 +134,7 @@ class SlayerOverlay extends WidgetItemOverlay
 		}
 
 		// Draw the counter in the bottom left for equipment, and top left for jewelry
-		textComponent.setPosition(new Point(bounds.x, bounds.y + (SLAYER_JEWELRY.contains(itemId)
+		textComponent.setPosition(new Point(bounds.x - 1, bounds.y - 1 + (SLAYER_JEWELRY.contains(itemId)
 			? bounds.height
 			: graphics.getFontMetrics().getHeight())));
 		textComponent.render(graphics);

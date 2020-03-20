@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2017, Devin French <https://github.com/devinfrench>
+ * Copyright (c) 2019, Aleios <https://github.com/aleios>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -172,10 +173,10 @@ public interface ItemChargeConfig extends Config
 	}
 
 	@ConfigItem(
-			keyName = "showBellowCharges",
-			name = "Show Bellow Charges",
-			description = "Configures if ogre bellow item charge is shown",
-			position = 12
+		keyName = "showBellowCharges",
+		name = "Show Bellow Charges",
+		description = "Configures if ogre bellow item charge is shown",
+		position = 12
 	)
 	default boolean showBellowCharges()
 	{
@@ -183,10 +184,32 @@ public interface ItemChargeConfig extends Config
 	}
 
 	@ConfigItem(
-			keyName = "showAbyssalBraceletCharges",
-			name = "Show Abyssal Bracelet Charges",
-			description = "Configures if abyssal bracelet item charge is shown",
-			position = 13
+		keyName = "showBasketCharges",
+		name = "Show Basket Charges",
+		description = "Configures if fruit basket item charge is shown",
+		position = 13
+	)
+	default boolean showBasketCharges()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "showSackCharges",
+		name = "Show Sack Charges",
+		description = "Configures if sack item charge is shown",
+		position = 14
+	)
+	default boolean showSackCharges()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "showAbyssalBraceletCharges",
+		name = "Show Abyssal Bracelet Charges",
+		description = "Configures if abyssal bracelet item charge is shown",
+		position = 15
 	)
 	default boolean showAbyssalBraceletCharges()
 	{
@@ -194,10 +217,68 @@ public interface ItemChargeConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "showAmuletOfChemistryCharges",
+		name = "Show Amulet of Chemistry Charges",
+		description = "Configures if amulet of chemistry item charge is shown",
+		position = 16
+	)
+	default boolean showAmuletOfChemistryCharges()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "amuletOfChemistry",
+		name = "",
+		description = "",
+		hidden = true
+	)
+	default int amuletOfChemistry()
+	{
+		return -1;
+	}
+
+	@ConfigItem(
+		keyName = "amuletOfChemistry",
+		name = "",
+		description = ""
+	)
+	void amuletOfChemistry(int amuletOfChemistry);
+
+	@ConfigItem(
+		keyName = "showAmuletOfBountyCharges",
+		name = "Show Amulet of Bounty Charges",
+		description = "Configures if amulet of bounty item charge is shown",
+		position = 17
+	)
+	default boolean showAmuletOfBountyCharges()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "amuletOfBounty",
+		name = "",
+		description = "",
+		hidden = true
+	)
+	default int amuletOfBounty()
+	{
+		return -1;
+	}
+
+	@ConfigItem(
+		keyName = "amuletOfBounty",
+		name = "",
+		description = ""
+	)
+	void amuletOfBounty(int amuletOfBounty);
+
+	@ConfigItem(
 		keyName = "recoilNotification",
 		name = "Ring of Recoil Notification",
 		description = "Configures if the ring of recoil breaking notification is shown",
-		position = 14
+		position = 18
 	)
 	default boolean recoilNotification()
 	{
@@ -208,7 +289,7 @@ public interface ItemChargeConfig extends Config
 		keyName = "showBindingNecklaceCharges",
 		name = "Show Binding Necklace Charges",
 		description = "Configures if binding necklace item charge is shown",
-		position = 15
+		position = 19
 	)
 	default boolean showBindingNecklaceCharges()
 	{
@@ -237,9 +318,78 @@ public interface ItemChargeConfig extends Config
 		keyName = "bindingNotification",
 		name = "Binding Necklace Notification",
 		description = "Configures if the binding necklace breaking notification is shown",
-		position = 16
+		position = 20
 	)
 	default boolean bindingNotification()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "showExplorerRingCharges",
+		name = "Show Explorer's Ring Alch Charges",
+		description = "Configures if explorer's ring alchemy charges are shown",
+		position = 21
+	)
+	default boolean showExplorerRingCharges()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "explorerRing",
+		name = "",
+		description = "",
+		hidden = true
+	)
+	default int explorerRing()
+	{
+		return -1;
+	}
+
+	@ConfigItem(
+		keyName = "explorerRing",
+		name = "",
+		description = ""
+	)
+	void explorerRing(int explorerRing);
+
+	@ConfigItem(
+		keyName = "showRingOfForgingCount",
+		name = "Show Ring of Forging Charges",
+		description = "Configures if the Ring of Forging charge count is shown",
+		position = 22
+	)
+	default boolean showRingOfForgingCount()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "ringOfForging",
+		name = "",
+		description = "",
+		hidden = true
+	)
+	default int ringOfForging()
+	{
+		return -1;
+	}
+
+	@ConfigItem(
+		keyName = "ringOfForging",
+		name = "",
+		description = ""
+	)
+	void ringOfForging(int ringOfForging);
+
+	@ConfigItem(
+		keyName = "ringOfForgingNotification",
+		name = "Ring of Forging Notification",
+		description = "Configures if the Ring of Forging breaking notification is enabled",
+		position = 23
+	)
+	default boolean ringOfForgingNotification()
 	{
 		return true;
 	}
@@ -248,7 +398,7 @@ public interface ItemChargeConfig extends Config
 		keyName = "showInfoboxes",
 		name = "Show Infoboxes",
 		description = "Configures whether to show an infobox equipped charge items",
-		position = 17
+		position = 24
 	)
 	default boolean showInfoboxes()
 	{
