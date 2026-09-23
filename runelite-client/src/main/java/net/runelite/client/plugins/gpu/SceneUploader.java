@@ -24,11 +24,12 @@
  */
 package net.runelite.client.plugins.gpu;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import net.runelite.api.Client;
+import java.util.HashSet;
+import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Constants;
 import net.runelite.api.DecorativeObject;
+import net.runelite.api.DynamicObject;
 import net.runelite.api.GameObject;
 import net.runelite.api.GroundObject;
 import net.runelite.api.Model;
@@ -40,304 +41,474 @@ import net.runelite.api.SceneTileModel;
 import net.runelite.api.SceneTilePaint;
 import net.runelite.api.Tile;
 import net.runelite.api.WallObject;
+import net.runelite.api.WorldView;
+import net.runelite.client.callback.RenderCallbackManager;
 
-@Singleton
+@Slf4j
 class SceneUploader
 {
-	@Inject
-	private Client client;
+	private final int[] modelLocalXI;
+	private final int[] modelLocalYI;
+	private final int[] modelLocalZI;
 
-	int sceneId = (int) (System.currentTimeMillis() / 1000L);
-	private int offset;
-	private int uvoffset;
+	private final float[] u, v;
 
-	void upload(Scene scene, GpuIntBuffer vertexbuffer, GpuFloatBuffer uvBuffer)
+	private final RenderCallbackManager renderCallbackManager;
+	private int basex, basez, rid, level;
+
+	SceneUploader(RenderCallbackManager renderCallbackManager)
 	{
-		++sceneId;
-		offset = 0;
-		uvoffset = 0;
-		vertexbuffer.clear();
-		uvBuffer.clear();
+		this.renderCallbackManager = renderCallbackManager;
+		modelLocalXI = new int[ModelUploader.MAX_VERTEX_COUNT];
+		modelLocalYI = new int[ModelUploader.MAX_VERTEX_COUNT];
+		modelLocalZI = new int[ModelUploader.MAX_VERTEX_COUNT];
+		u = new float[3];
+		v = new float[3];
+	}
 
-		for (int z = 0; z < Constants.MAX_Z; ++z)
-		{
-			for (int x = 0; x < Constants.SCENE_SIZE; ++x)
-			{
-				for (int y = 0; y < Constants.SCENE_SIZE; ++y)
-				{
-					Tile tile = scene.getTiles()[z][x][y];
-					if (tile != null)
-					{
-						reset(tile);
-					}
-				}
-			}
-		}
+	void zoneSize(Scene scene, Zone zone, int mzx, int mzz)
+	{
+		Tile[][][] tiles = scene.getExtendedTiles();
 
-		for (int z = 0; z < Constants.MAX_Z; ++z)
+		for (int z = 3; z >= 0; --z)
 		{
-			for (int x = 0; x < Constants.SCENE_SIZE; ++x)
+			for (int xoff = 0; xoff < 8; ++xoff)
 			{
-				for (int y = 0; y < Constants.SCENE_SIZE; ++y)
+				for (int zoff = 0; zoff < 8; ++zoff)
 				{
-					Tile tile = scene.getTiles()[z][x][y];
-					if (tile != null)
+					Tile t = tiles[z][(mzx << 3) + xoff][(mzz << 3) + zoff];
+					if (t != null)
 					{
-						upload(tile, vertexbuffer, uvBuffer);
+						zoneSize(zone, t);
 					}
 				}
 			}
 		}
 	}
 
-	private void reset(Tile tile)
+	void uploadZone(Scene scene, Zone zone, int mzx, int mzz)
 	{
-		Tile bridge = tile.getBridge();
-		if (bridge != null)
+		int[][][] roofs = scene.getRoofs();
+		Set<Integer> roofIds = new HashSet<>();
+
+		var vb = zone.vboO != null ? new GpuIntBuffer(zone.vboO.vb) : null;
+		var ab = zone.vboA != null ? new GpuIntBuffer(zone.vboA.vb) : null;
+
+		for (int level = 0; level <= 3; ++level)
 		{
-			reset(bridge);
+			for (int xoff = 0; xoff < 8; ++xoff)
+			{
+				for (int zoff = 0; zoff < 8; ++zoff)
+				{
+					int rid = roofs[level][(mzx << 3) + xoff][(mzz << 3) + zoff];
+					if (rid > 0)
+					{
+						roofIds.add(rid);
+					}
+				}
+			}
 		}
 
-		SceneTilePaint sceneTilePaint = tile.getSceneTilePaint();
-		if (sceneTilePaint != null)
+		zone.rids = new int[4][roofIds.size()];
+		zone.roofStart = new int[4][roofIds.size()];
+		zone.roofEnd = new int[4][roofIds.size()];
+
+		for (int level = 0; level <= 3; ++level)
 		{
-			sceneTilePaint.setBufferOffset(-1);
+			this.level = level;
+
+			if (level == 0)
+			{
+				uploadZoneLevel(scene, zone, mzx, mzz, level, false, roofIds, vb, ab);
+				uploadZoneLevel(scene, zone, mzx, mzz, level, true, roofIds, vb, ab);
+				uploadZoneLevel(scene, zone, mzx, mzz, 1, true, roofIds, vb, ab);
+				uploadZoneLevel(scene, zone, mzx, mzz, 2, true, roofIds, vb, ab);
+				uploadZoneLevel(scene, zone, mzx, mzz, 3, true, roofIds, vb, ab);
+			}
+			else
+			{
+				uploadZoneLevel(scene, zone, mzx, mzz, level, false, roofIds, vb, ab);
+			}
+
+			if (zone.vboO != null)
+			{
+				int pos = zone.vboO.vb.position();
+				zone.levelOffsets[level] = pos;
+			}
+		}
+	}
+
+	private void uploadZoneLevel(Scene scene, Zone zone, int mzx, int mzz, int level, boolean visbelow, Set<Integer> roofIds, GpuIntBuffer vb, GpuIntBuffer ab)
+	{
+		int ridx = 0;
+
+		// upload the roofs and save their positions
+		for (int id : roofIds)
+		{
+			int pos = zone.vboO != null ? zone.vboO.vb.position() : 0;
+
+			uploadZoneLevelRoof(scene, zone, mzx, mzz, level, id, visbelow, vb, ab);
+
+			int endpos = zone.vboO != null ? zone.vboO.vb.position() : 0;
+
+			if (endpos > pos)
+			{
+				zone.rids[level][ridx] = id;
+				zone.roofStart[level][ridx] = pos;
+				zone.roofEnd[level][ridx] = endpos;
+				++ridx;
+			}
 		}
 
-		SceneTileModel sceneTileModel = tile.getSceneTileModel();
-		if (sceneTileModel != null)
+		// upload everything else
+		uploadZoneLevelRoof(scene, zone, mzx, mzz, level, 0, visbelow, vb, ab);
+	}
+
+	private void uploadZoneLevelRoof(Scene scene, Zone zone, int mzx, int mzz, int level, int roofId, boolean visbelow, GpuIntBuffer vb, GpuIntBuffer ab)
+	{
+		byte[][][] settings = scene.getExtendedTileSettings();
+		int[][][] roofs = scene.getRoofs();
+		Tile[][][] tiles = scene.getExtendedTiles();
+
+		int offset = scene.getWorldViewId() == WorldView.TOPLEVEL ? GpuPlugin.SCENE_OFFSET >> 3 : 0;
+		this.basex = (mzx - offset) << 10;
+		this.basez = (mzz - offset) << 10;
+
+		for (int xoff = 0; xoff < 8; ++xoff)
 		{
-			sceneTileModel.setBufferOffset(-1);
+			for (int zoff = 0; zoff < 8; ++zoff)
+			{
+				int msx = (mzx << 3) + xoff;
+				int msz = (mzz << 3) + zoff;
+
+				boolean isbridge = (settings[1][msx][msz] & Constants.TILE_FLAG_BRIDGE) != 0;
+				int maplevel = level;
+				if (isbridge)
+				{
+					++maplevel;
+				}
+
+				boolean isvisbelow = maplevel <= 3 && (settings[maplevel][msx][msz] & Constants.TILE_FLAG_VIS_BELOW) != 0;
+				if (isvisbelow != visbelow)
+				{
+					continue;
+				}
+
+				int rid;
+				if (isvisbelow || maplevel == 0)
+				{
+					rid = 0;
+				}
+				else
+				{
+					rid = roofs[maplevel - 1][msx][msz];
+				}
+
+				if (rid == roofId)
+				{
+					Tile t = tiles[level][msx][msz];
+					if (t != null)
+					{
+						this.rid = rid;
+						uploadZoneTile(scene, zone, t, vb, ab);
+					}
+				}
+			}
+		}
+	}
+
+	private void zoneSize(Zone z, Tile t)
+	{
+		SceneTilePaint paint = t.getSceneTilePaint();
+		if (paint != null)
+		{
+			z.sizeO += 2;
 		}
 
-		WallObject wallObject = tile.getWallObject();
+		SceneTileModel model = t.getSceneTileModel();
+		if (model != null)
+		{
+			z.sizeO += model.getFaceX().length;
+		}
+
+		WallObject wallObject = t.getWallObject();
 		if (wallObject != null)
 		{
-			if (wallObject.getRenderable1() instanceof Model)
-			{
-				((Model) wallObject.getRenderable1()).setBufferOffset(-1);
-			}
-			if (wallObject.getRenderable2() instanceof Model)
-			{
-				((Model) wallObject.getRenderable2()).setBufferOffset(-1);
-			}
+			zoneRenderableSize(z, wallObject.getRenderable1());
+			zoneRenderableSize(z, wallObject.getRenderable2());
 		}
 
-		GroundObject groundObject = tile.getGroundObject();
-		if (groundObject != null)
-		{
-			if (groundObject.getRenderable() instanceof Model)
-			{
-				((Model) groundObject.getRenderable()).setBufferOffset(-1);
-			}
-		}
-
-		DecorativeObject decorativeObject = tile.getDecorativeObject();
+		DecorativeObject decorativeObject = t.getDecorativeObject();
 		if (decorativeObject != null)
 		{
-			if (decorativeObject.getRenderable() instanceof Model)
-			{
-				((Model) decorativeObject.getRenderable()).setBufferOffset(-1);
-			}
+			zoneRenderableSize(z, decorativeObject.getRenderable());
+			zoneRenderableSize(z, decorativeObject.getRenderable2());
 		}
 
-		GameObject[] gameObjects = tile.getGameObjects();
+		GroundObject groundObject = t.getGroundObject();
+		if (groundObject != null)
+		{
+			zoneRenderableSize(z, groundObject.getRenderable());
+		}
+
+		GameObject[] gameObjects = t.getGameObjects();
 		for (GameObject gameObject : gameObjects)
 		{
 			if (gameObject == null)
 			{
 				continue;
 			}
-			if (gameObject.getRenderable() instanceof Model)
-			{
-				((Model) gameObject.getRenderable()).setBufferOffset(-1);
-			}
-		}
-	}
 
-	private void upload(Tile tile, GpuIntBuffer vertexBuffer, GpuFloatBuffer uvBuffer)
-	{
-		Tile bridge = tile.getBridge();
-		if (bridge != null)
-		{
-			upload(bridge, vertexBuffer, uvBuffer);
-		}
-
-		SceneTilePaint sceneTilePaint = tile.getSceneTilePaint();
-		if (sceneTilePaint != null)
-		{
-			sceneTilePaint.setBufferOffset(offset);
-			if (sceneTilePaint.getTexture() != -1)
-			{
-				sceneTilePaint.setUvBufferOffset(uvoffset);
-			}
-			else
-			{
-				sceneTilePaint.setUvBufferOffset(-1);
-			}
-			Point tilePoint = tile.getSceneLocation();
-			int len = upload(sceneTilePaint, tile.getRenderLevel(), tilePoint.getX(), tilePoint.getY(), vertexBuffer, uvBuffer);
-			sceneTilePaint.setBufferLen(len);
-			offset += len;
-			if (sceneTilePaint.getTexture() != -1)
-			{
-				uvoffset += len;
-			}
-		}
-
-		SceneTileModel sceneTileModel = tile.getSceneTileModel();
-		if (sceneTileModel != null)
-		{
-			sceneTileModel.setBufferOffset(offset);
-			if (sceneTileModel.getTriangleTextureId() != null)
-			{
-				sceneTileModel.setUvBufferOffset(uvoffset);
-			}
-			else
-			{
-				sceneTileModel.setUvBufferOffset(-1);
-			}
-			Point tilePoint = tile.getSceneLocation();
-			int len = upload(sceneTileModel, tilePoint.getX(), tilePoint.getY(), vertexBuffer, uvBuffer);
-			sceneTileModel.setBufferLen(len);
-			offset += len;
-			if (sceneTileModel.getTriangleTextureId() != null)
-			{
-				uvoffset += len;
-			}
-		}
-
-		WallObject wallObject = tile.getWallObject();
-		if (wallObject != null)
-		{
-			Renderable renderable1 = wallObject.getRenderable1();
-			if (renderable1 instanceof Model)
-			{
-				uploadModel((Model) renderable1, vertexBuffer, uvBuffer);
-			}
-
-			Renderable renderable2 = wallObject.getRenderable2();
-			if (renderable2 instanceof Model)
-			{
-				uploadModel((Model) renderable2, vertexBuffer, uvBuffer);
-			}
-		}
-
-		GroundObject groundObject = tile.getGroundObject();
-		if (groundObject != null)
-		{
-			Renderable renderable = groundObject.getRenderable();
-			if (renderable instanceof Model)
-			{
-				uploadModel((Model) renderable, vertexBuffer, uvBuffer);
-			}
-		}
-
-		DecorativeObject decorativeObject = tile.getDecorativeObject();
-		if (decorativeObject != null)
-		{
-			Renderable renderable = decorativeObject.getRenderable();
-			if (renderable instanceof Model)
-			{
-				uploadModel((Model) renderable, vertexBuffer, uvBuffer);
-			}
-
-			Renderable renderable2 = decorativeObject.getRenderable2();
-			if (renderable2 instanceof Model)
-			{
-				uploadModel((Model) renderable2, vertexBuffer, uvBuffer);
-			}
-		}
-
-		GameObject[] gameObjects = tile.getGameObjects();
-		for (GameObject gameObject : gameObjects)
-		{
-			if (gameObject == null)
+			if (!gameObject.getSceneMinLocation().equals(t.getSceneLocation()))
 			{
 				continue;
 			}
 
 			Renderable renderable = gameObject.getRenderable();
-			if (renderable instanceof Model)
-			{
-				uploadModel((Model) gameObject.getRenderable(), vertexBuffer, uvBuffer);
-			}
+			zoneRenderableSize(z, renderable);
+		}
+
+		Tile bridge = t.getBridge();
+		if (bridge != null)
+		{
+			zoneSize(z, bridge);
 		}
 	}
 
-	private int upload(SceneTilePaint tile, int tileZ, int tileX, int tileY, GpuIntBuffer vertexBuffer, GpuFloatBuffer uvBuffer)
+	private int uploadZoneTile(Scene scene, Zone zone, Tile t, GpuIntBuffer vertexBuffer, GpuIntBuffer ab)
 	{
-		final int[][][] tileHeights = client.getTileHeights();
+		int len = 0;
+		boolean drawTile = renderCallbackManager.drawTile(scene, t);
 
-		final int localX = 0;
-		final int localY = 0;
+		SceneTilePaint paint = t.getSceneTilePaint();
+		if (paint != null && drawTile)
+		{
+			Point tilePoint = t.getSceneLocation();
+			len = upload(scene, paint,
+				t.getRenderLevel(), tilePoint.getX(), tilePoint.getY(),
+				vertexBuffer,
+				tilePoint.getX() * 128 - basex, tilePoint.getY() * 128 - basez
+			);
+		}
 
-		int swHeight = tileHeights[tileZ][tileX][tileY];
-		int seHeight = tileHeights[tileZ][tileX + 1][tileY];
-		int neHeight = tileHeights[tileZ][tileX + 1][tileY + 1];
-		int nwHeight = tileHeights[tileZ][tileX][tileY + 1];
+		SceneTileModel model = t.getSceneTileModel();
+		if (model != null && drawTile)
+		{
+			Point tilePoint = t.getSceneLocation();
+			len += upload(model, tilePoint.getX() << 7, tilePoint.getY() << 7, vertexBuffer);
+		}
 
+		WallObject wallObject = t.getWallObject();
+		if (wallObject != null && renderCallbackManager.drawObject(scene, wallObject))
+		{
+			Renderable renderable1 = wallObject.getRenderable1();
+			uploadZoneRenderable(renderable1, zone, 0, wallObject.getX(), wallObject.getZ(), wallObject.getY(), -1, -1, -1, -1, wallObject.getId(), vertexBuffer, ab);
+
+			Renderable renderable2 = wallObject.getRenderable2();
+			uploadZoneRenderable(renderable2, zone, 0, wallObject.getX(), wallObject.getZ(), wallObject.getY(), -1, -1, -1, -1, wallObject.getId(), vertexBuffer, ab);
+		}
+
+		DecorativeObject decorativeObject = t.getDecorativeObject();
+		if (decorativeObject != null && renderCallbackManager.drawObject(scene, decorativeObject))
+		{
+			Renderable renderable = decorativeObject.getRenderable();
+			uploadZoneRenderable(renderable, zone, 0, decorativeObject.getX() + decorativeObject.getXOffset(), decorativeObject.getZ(), decorativeObject.getY() + decorativeObject.getYOffset(), -1, -1, -1, -1, decorativeObject.getId(), vertexBuffer, ab);
+
+			Renderable renderable2 = decorativeObject.getRenderable2();
+			uploadZoneRenderable(renderable2, zone, 0, decorativeObject.getX() + decorativeObject.getXOffset2(), decorativeObject.getZ(), decorativeObject.getY() + decorativeObject.getYOffset2(), -1, -1, -1, -1, decorativeObject.getId(), vertexBuffer, ab);
+		}
+
+		GroundObject groundObject = t.getGroundObject();
+		if (groundObject != null && renderCallbackManager.drawObject(scene, groundObject))
+		{
+			Renderable renderable = groundObject.getRenderable();
+			uploadZoneRenderable(renderable, zone, 0, groundObject.getX(), groundObject.getZ(), groundObject.getY(),
+				-1, -1, -1, -1,
+				groundObject.getId(),
+				vertexBuffer, ab);
+		}
+
+		GameObject[] gameObjects = t.getGameObjects();
+		for (GameObject gameObject : gameObjects)
+		{
+			if (gameObject == null)
+			{
+				continue;
+			}
+
+			Point min = gameObject.getSceneMinLocation(), max = gameObject.getSceneMaxLocation();
+
+			if (!min.equals(t.getSceneLocation()))
+			{
+				continue;
+			}
+
+			if (!renderCallbackManager.drawObject(scene, gameObject))
+			{
+				continue;
+			}
+
+			Renderable renderable = gameObject.getRenderable();
+			uploadZoneRenderable(renderable, zone, gameObject.getModelOrientation(), gameObject.getX(), gameObject.getZ(), gameObject.getY(),
+				min.getX(), min.getY(), max.getX(), max.getY(),
+				gameObject.getId(),
+				vertexBuffer, ab);
+		}
+
+		Tile bridge = t.getBridge();
+		if (bridge != null)
+		{
+			len += uploadZoneTile(scene, zone, bridge, vertexBuffer, ab);
+		}
+
+		return len;
+	}
+
+	private void zoneRenderableSize(Zone z, Renderable r)
+	{
+		Model m = null;
+		if (r instanceof Model)
+		{
+			m = (Model) r;
+		}
+		else if (r instanceof DynamicObject)
+		{
+			m = ((DynamicObject) r).getModelZbuf();
+		}
+		if (m == null)
+		{
+			return;
+		}
+
+		byte[] transparencies = m.getFaceTransparencies();
+		int faceCount = m.getFaceCount();
+		if (transparencies != null)
+		{
+			for (int face = 0; face < faceCount; ++face)
+			{
+				boolean alpha = transparencies[face] != 0;
+				if (alpha)
+				{
+					z.sizeA++;
+				}
+				else
+				{
+					z.sizeO++;
+				}
+			}
+			return;
+		}
+		z.sizeO += faceCount;
+	}
+
+	private void uploadZoneRenderable(Renderable r, Zone zone, int orient, int x, int y, int z, int lx, int lz, int ux, int uz, int id, GpuIntBuffer vb, GpuIntBuffer ab)
+	{
+		int pos = zone.vboA != null ? zone.vboA.vb.position() : 0;
+		Model model = null;
+		if (r instanceof Model)
+		{
+			model = (Model) r;
+			uploadStaticModel(model, orient, x - basex, y, z - basez, vb, ab);
+		}
+		else if (r instanceof DynamicObject)
+		{
+			model = ((DynamicObject) r).getModelZbuf();
+			if (model != null)
+			{
+				uploadStaticModel(model, orient, x - basex, y, z - basez, vb, ab);
+			}
+		}
+		int endpos = zone.vboA != null ? zone.vboA.vb.position() : 0;
+		if (endpos > pos)
+		{
+			assert model != null;
+			if (lx > -1)
+			{
+				lx -= basex >> 7;
+				lz -= basez >> 7;
+				ux -= basex >> 7;
+				uz -= basez >> 7;
+				assert lx >= 0 : lx;
+				assert lz >= 0 : lz;
+				assert ux < 25 : ux; // largest object?
+				assert uz < 25 : uz;
+			}
+			zone.addAlphaModel(zone.glVaoA, model, pos, endpos,
+				x - basex, y, z - basez,
+				lx, lz, ux, uz,
+				rid, level, id);
+		}
+	}
+
+	private int upload(Scene scene, SceneTilePaint tile, int tileZ, int tileX, int tileY, GpuIntBuffer vertexBuffer, int lx, int lz)
+	{
+		tileX += scene.getWorldViewId() == WorldView.TOPLEVEL ? GpuPlugin.SCENE_OFFSET : 0;
+		tileY += scene.getWorldViewId() == WorldView.TOPLEVEL ? GpuPlugin.SCENE_OFFSET : 0;
+
+		final int[][][] tileHeights = scene.getTileHeights();
+		final int swHeight = tileHeights[tileZ][tileX][tileY];
+		final int seHeight = tileHeights[tileZ][tileX + 1][tileY];
+		final int neHeight = tileHeights[tileZ][tileX + 1][tileY + 1];
+		final int nwHeight = tileHeights[tileZ][tileX][tileY + 1];
+
+		final int swColor = tile.getSwColor();
+		final int seColor = tile.getSeColor();
 		final int neColor = tile.getNeColor();
 		final int nwColor = tile.getNwColor();
-		final int seColor = tile.getSeColor();
-		final int swColor = tile.getSwColor();
 
 		if (neColor == 12345678)
 		{
 			return 0;
 		}
 
-		vertexBuffer.ensureCapacity(24);
-		uvBuffer.ensureCapacity(24);
-
 		// 0,0
-		int vertexDx = localX;
-		int vertexDy = localY;
-		int vertexDz = swHeight;
-		final int c1 = swColor;
+		final int lx0 = lx;
+		final int ly0 = swHeight;
+		final int lz0 = lz;
+		final int hsl0 = swColor;
 
 		// 1,0
-		int vertexCx = localX + Perspective.LOCAL_TILE_SIZE;
-		int vertexCy = localY;
-		int vertexCz = seHeight;
-		final int c2 = seColor;
+		final int lx1 = lx + Perspective.LOCAL_TILE_SIZE;
+		final int ly1 = seHeight;
+		final int lz1 = lz;
+		final int hsl1 = seColor;
 
 		// 1,1
-		int vertexAx = localX + Perspective.LOCAL_TILE_SIZE;
-		int vertexAy = localY + Perspective.LOCAL_TILE_SIZE;
-		int vertexAz = neHeight;
-		final int c3 = neColor;
+		final int lx2 = lx + Perspective.LOCAL_TILE_SIZE;
+		final int ly2 = neHeight;
+		final int lz2 = lz + Perspective.LOCAL_TILE_SIZE;
+		final int hsl2 = neColor;
 
 		// 0,1
-		int vertexBx = localX;
-		int vertexBy = localY + Perspective.LOCAL_TILE_SIZE;
-		int vertexBz = nwHeight;
-		final int c4 = nwColor;
+		final int lx3 = lx;
+		final int ly3 = nwHeight;
+		final int lz3 = lz + Perspective.LOCAL_TILE_SIZE;
+		final int hsl3 = nwColor;
 
-		vertexBuffer.put(vertexAx, vertexAz, vertexAy, c3);
-		vertexBuffer.put(vertexBx, vertexBz, vertexBy, c4);
-		vertexBuffer.put(vertexCx, vertexCz, vertexCy, c2);
+		int tex = tile.getTexture() + 1;
 
-		vertexBuffer.put(vertexDx, vertexDz, vertexDy, c1);
-		vertexBuffer.put(vertexCx, vertexCz, vertexCy, c2);
-		vertexBuffer.put(vertexBx, vertexBz, vertexBy, c4);
+		vertexBuffer.put22224(lx2, ly2, lz2, hsl2);
+		vertexBuffer.put2222(tex, 256, 256, 0);
 
-		if (tile.getTexture() != -1)
-		{
-			float tex = tile.getTexture() + 1f;
-			uvBuffer.put(tex, 1.0f, 1.0f, 0f);
-			uvBuffer.put(tex, 0.0f, 1.0f, 0f);
-			uvBuffer.put(tex, 1.0f, 0.0f, 0f);
+		vertexBuffer.put22224(lx3, ly3, lz3, hsl3);
+		vertexBuffer.put2222(tex, 0, 256, 0);
 
-			uvBuffer.put(tex, 0.0f, 0.0f, 0f);
-			uvBuffer.put(tex, 1.0f, 0.0f, 0f);
-			uvBuffer.put(tex, 0.0f, 1.0f, 0f);
-		}
+		vertexBuffer.put22224(lx1, ly1, lz1, hsl1);
+		vertexBuffer.put2222(tex, 256, 0, 0);
+
+		vertexBuffer.put22224(lx0, ly0, lz0, hsl0);
+		vertexBuffer.put2222(tex, 0, 0, 0);
+
+		vertexBuffer.put22224(lx1, ly1, lz1, hsl1);
+		vertexBuffer.put2222(tex, 256, 0, 0);
+
+		vertexBuffer.put22224(lx3, ly3, lz3, hsl3);
+		vertexBuffer.put2222(tex, 0, 256, 0);
 
 		return 6;
 	}
 
-	private int upload(SceneTileModel sceneTileModel, int tileX, int tileY, GpuIntBuffer vertexBuffer, GpuFloatBuffer uvBuffer)
+	private int upload(SceneTileModel sceneTileModel, int lx, int lz, GpuIntBuffer vertexBuffer)
 	{
 		final int[] faceX = sceneTileModel.getFaceX();
 		final int[] faceY = sceneTileModel.getFaceY();
@@ -355,195 +526,167 @@ class SceneUploader
 
 		final int faceCount = faceX.length;
 
-		vertexBuffer.ensureCapacity(faceCount * 12);
-		uvBuffer.ensureCapacity(faceCount * 12);
-
-		int baseX = Perspective.LOCAL_TILE_SIZE * tileX;
-		int baseY = Perspective.LOCAL_TILE_SIZE * tileY;
-
 		int cnt = 0;
 		for (int i = 0; i < faceCount; ++i)
 		{
-			final int triangleA = faceX[i];
-			final int triangleB = faceY[i];
-			final int triangleC = faceZ[i];
+			final int vertex0 = faceX[i];
+			final int vertex1 = faceY[i];
+			final int vertex2 = faceZ[i];
 
-			final int colorA = triangleColorA[i];
-			final int colorB = triangleColorB[i];
-			final int colorC = triangleColorC[i];
+			final int hsl0 = triangleColorA[i];
+			final int hsl1 = triangleColorB[i];
+			final int hsl2 = triangleColorC[i];
 
-			if (colorA == 12345678)
+			if (hsl0 == 12345678)
 			{
 				continue;
 			}
 
 			cnt += 3;
 
-			int vertexXA = vertexX[triangleA] - baseX;
-			int vertexZA = vertexZ[triangleA] - baseY;
+			// vertexes are stored in scene local, convert to tile local
+			int lx0 = vertexX[vertex0] - basex;
+			int ly0 = vertexY[vertex0];
+			int lz0 = vertexZ[vertex0] - basez;
 
-			int vertexXB = vertexX[triangleB] - baseX;
-			int vertexZB = vertexZ[triangleB] - baseY;
+			int lx1 = vertexX[vertex1] - basex;
+			int ly1 = vertexY[vertex1];
+			int lz1 = vertexZ[vertex1] - basez;
 
-			int vertexXC = vertexX[triangleC] - baseX;
-			int vertexZC = vertexZ[triangleC] - baseY;
+			int lx2 = vertexX[vertex2] - basex;
+			int ly2 = vertexY[vertex2];
+			int lz2 = vertexZ[vertex2] - basez;
 
-			vertexBuffer.put(vertexXA, vertexY[triangleA], vertexZA, colorA);
-			vertexBuffer.put(vertexXB, vertexY[triangleB], vertexZB, colorB);
-			vertexBuffer.put(vertexXC, vertexY[triangleC], vertexZC, colorC);
+			int tex = triangleTextures != null ? triangleTextures[i] + 1 : 0;
+			vertexBuffer.put22224(lx0, ly0, lz0, hsl0);
+			vertexBuffer.put2222(tex, (int) ((vertexX[vertex0] - lx) * 2f), (int) ((vertexZ[vertex0] - lz) * 2f), 0);
 
-			if (triangleTextures != null)
-			{
-				if (triangleTextures[i] != -1)
-				{
-					float tex = triangleTextures[i] + 1f;
-					uvBuffer.put(tex, vertexXA / 128f, vertexZA / 128f, 0f);
-					uvBuffer.put(tex, vertexXB / 128f, vertexZB / 128f, 0f);
-					uvBuffer.put(tex, vertexXC / 128f, vertexZC / 128f, 0f);
-				}
-				else
-				{
-					uvBuffer.put(0, 0, 0, 0f);
-					uvBuffer.put(0, 0, 0, 0f);
-					uvBuffer.put(0, 0, 0, 0f);
-				}
-			}
+			vertexBuffer.put22224(lx1, ly1, lz1, hsl1);
+			vertexBuffer.put2222(tex, (int) ((vertexX[vertex1] - lx) * 2f), (int) ((vertexZ[vertex1] - lz) * 2f), 0);
+
+			vertexBuffer.put22224(lx2, ly2, lz2, hsl2);
+			vertexBuffer.put2222(tex, (int) ((vertexX[vertex2] - lx) * 2f), (int) ((vertexZ[vertex2] - lz) * 2f), 0);
 		}
 
 		return cnt;
 	}
 
-	private void uploadModel(Model model, GpuIntBuffer vertexBuffer, GpuFloatBuffer uvBuffer)
+	// scene upload
+	private int uploadStaticModel(Model model, int orient, int x, int y, int z, GpuIntBuffer vb, GpuIntBuffer ab)
 	{
-		if (model.getBufferOffset() > 0)
-		{
-			return;
-		}
+		final int vertexCount = model.getVerticesCount();
+		final int triangleCount = model.getFaceCount();
 
-		model.setBufferOffset(offset);
-		if (model.getFaceTextures() != null)
-		{
-			model.setUvBufferOffset(uvoffset);
-		}
-		else
-		{
-			model.setUvBufferOffset(-1);
-		}
-		model.setSceneId(sceneId);
+		final float[] vertexX = model.getVerticesX();
+		final float[] vertexY = model.getVerticesY();
+		final float[] vertexZ = model.getVerticesZ();
 
-		vertexBuffer.ensureCapacity(model.getTrianglesCount() * 12);
-		uvBuffer.ensureCapacity(model.getTrianglesCount() * 12);
-
-		final int triangleCount = model.getTrianglesCount();
-		int len = 0;
-		for (int i = 0; i < triangleCount; ++i)
-		{
-			len += pushFace(model, i, vertexBuffer, uvBuffer);
-		}
-
-		offset += len;
-		if (model.getFaceTextures() != null)
-		{
-			uvoffset += len;
-		}
-	}
-
-	int pushFace(Model model, int face, GpuIntBuffer vertexBuffer, GpuFloatBuffer uvBuffer)
-	{
-		final int[] vertexX = model.getVerticesX();
-		final int[] vertexY = model.getVerticesY();
-		final int[] vertexZ = model.getVerticesZ();
-
-		final int[] trianglesX = model.getTrianglesX();
-		final int[] trianglesY = model.getTrianglesY();
-		final int[] trianglesZ = model.getTrianglesZ();
+		final int[] indices1 = model.getFaceIndices1();
+		final int[] indices2 = model.getFaceIndices2();
+		final int[] indices3 = model.getFaceIndices3();
 
 		final int[] color1s = model.getFaceColors1();
 		final int[] color2s = model.getFaceColors2();
 		final int[] color3s = model.getFaceColors3();
 
-		final byte[] transparencies = model.getTriangleTransparencies();
 		final short[] faceTextures = model.getFaceTextures();
-		final byte[] facePriorities = model.getFaceRenderPriorities();
 
-		int triangleA = trianglesX[face];
-		int triangleB = trianglesY[face];
-		int triangleC = trianglesZ[face];
+		final byte[] transparencies = model.getFaceTransparencies();
+		final byte[] bias = model.getFaceBias();
 
-		int color1 = color1s[face];
-		int color2 = color2s[face];
-		int color3 = color3s[face];
-
-		int alpha = 0;
-		if (transparencies != null && (faceTextures == null || faceTextures[face] == -1))
+		int orientSin = 0;
+		int orientCos = 0;
+		if (orient != 0)
 		{
-			alpha = (transparencies[face] & 0xFF) << 24;
-		}
-		int priority = 0;
-		if (facePriorities != null)
-		{
-			priority = (facePriorities[face] & 0xff) << 16;
+			orientSin = Perspective.SINE[orient];
+			orientCos = Perspective.COSINE[orient];
 		}
 
-		if (color3 == -1)
+		for (int v = 0; v < vertexCount; ++v)
 		{
-			color2 = color3 = color1;
-		}
-		else if (color3 == -2)
-		{
-			vertexBuffer.put(0, 0, 0, 0);
-			vertexBuffer.put(0, 0, 0, 0);
-			vertexBuffer.put(0, 0, 0, 0);
+			int vx = (int) vertexX[v];
+			int vy = (int) vertexY[v];
+			int vz = (int) vertexZ[v];
 
-			if (faceTextures != null)
+			if (orient != 0)
 			{
-				uvBuffer.put(0, 0, 0, 0f);
-				uvBuffer.put(0, 0, 0, 0f);
-				uvBuffer.put(0, 0, 0, 0f);
+				int x0 = vx;
+				vx = vz * orientSin + x0 * orientCos >> 16;
+				vz = vz * orientCos - x0 * orientSin >> 16;
 			}
-			return 3;
+
+			vx += x;
+			vy += y;
+			vz += z;
+
+			modelLocalXI[v] = vx;
+			modelLocalYI[v] = vy;
+			modelLocalZI[v] = vz;
 		}
 
-		int a, b, c;
-
-		a = vertexX[triangleA];
-		b = vertexY[triangleA];
-		c = vertexZ[triangleA];
-
-		vertexBuffer.put(a, b, c, alpha | priority | color1);
-
-		a = vertexX[triangleB];
-		b = vertexY[triangleB];
-		c = vertexZ[triangleB];
-
-		vertexBuffer.put(a, b, c, alpha | priority | color2);
-
-		a = vertexX[triangleC];
-		b = vertexY[triangleC];
-		c = vertexZ[triangleC];
-
-		vertexBuffer.put(a, b, c, alpha | priority | color3);
-
-		float[][] u = model.getFaceTextureUCoordinates();
-		float[][] v = model.getFaceTextureVCoordinates();
-		float[] uf, vf;
-		if (faceTextures != null)
+		int len = 0;
+		for (int face = 0; face < triangleCount; ++face)
 		{
-			if (u != null && v != null && (uf = u[face]) != null && (vf = v[face]) != null)
+			int color1 = color1s[face];
+			int color2 = color2s[face];
+			int color3 = color3s[face];
+
+			boolean alpha = (transparencies != null && transparencies[face] != 0);
+
+			if (color3 == -1)
 			{
-				float texture = faceTextures[face] + 1f;
-				uvBuffer.put(texture, uf[0], vf[0], 0f);
-				uvBuffer.put(texture, uf[1], vf[1], 0f);
-				uvBuffer.put(texture, uf[2], vf[2], 0f);
+				color2 = color3 = color1;
 			}
-			else
+			else if (color3 == -2)
 			{
-				uvBuffer.put(0f, 0f, 0f, 0f);
-				uvBuffer.put(0f, 0f, 0f, 0f);
-				uvBuffer.put(0f, 0f, 0f, 0f);
+				continue;
 			}
+
+			int triangleA = indices1[face];
+			int triangleB = indices2[face];
+			int triangleC = indices3[face];
+
+			int vx1 = modelLocalXI[triangleA];
+			int vy1 = modelLocalYI[triangleA];
+			int vz1 = modelLocalZI[triangleA];
+
+			int vx2 = modelLocalXI[triangleB];
+			int vy2 = modelLocalYI[triangleB];
+			int vz2 = modelLocalZI[triangleB];
+
+			int vx3 = modelLocalXI[triangleC];
+			int vy3 = modelLocalYI[triangleC];
+			int vz3 = modelLocalZI[triangleC];
+
+			ModelUploader.computeFaceUvs(model, face, u, v);
+
+			int su0 = (int) (u[0] * 256f);
+			int sv0 = (int) (v[0] * 256f);
+
+			int su1 = (int) (u[1] * 256f);
+			int sv1 = (int) (v[1] * 256f);
+
+			int su2 = (int) (u[2] * 256f);
+			int sv2 = (int) (v[2] * 256f);
+
+			int alphaBias = 0;
+			alphaBias |= transparencies != null ? (transparencies[face] & 0xff) << 24 : 0;
+			alphaBias |= bias != null ? (bias[face] & 0xff) << 16 : 0;
+			int texture = faceTextures != null ? faceTextures[face] + 1 : 0;
+			GpuIntBuffer buf = alpha ? ab : vb;
+
+			buf.put22224(vx1, vy1, vz1, alphaBias | color1);
+			buf.put2222(texture, su0, sv0, 0);
+
+			buf.put22224(vx2, vy2, vz2, alphaBias | color2);
+			buf.put2222(texture, su1, sv1, 0);
+
+			buf.put22224(vx3, vy3, vz3, alphaBias | color3);
+			buf.put2222(texture, su2, sv2, 0);
+
+			len += 3;
 		}
 
-		return 3;
+		return len;
 	}
 }

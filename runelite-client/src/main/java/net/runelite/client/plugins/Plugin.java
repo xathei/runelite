@@ -24,13 +24,31 @@
  */
 package net.runelite.client.plugins;
 
+import com.google.common.base.Strings;
 import com.google.inject.Binder;
 import com.google.inject.Injector;
 import com.google.inject.Module;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.nio.file.Files;
+import net.runelite.client.RuneLite;
+import net.runelite.client.util.Filepath;
 
 public abstract class Plugin implements Module
 {
 	protected Injector injector;
+
+	@Override
+	public final int hashCode()
+	{
+		return super.hashCode();
+	}
+
+	@Override
+	public final boolean equals(Object obj)
+	{
+		return super.equals(obj);
+	}
 
 	@Override
 	public void configure(Binder binder)
@@ -45,8 +63,66 @@ public abstract class Plugin implements Module
 	{
 	}
 
+	protected Module getPublicModule()
+	{
+		return null;
+	}
+
+	public void resetConfiguration()
+	{
+	}
+
 	public final Injector getInjector()
 	{
 		return injector;
+	}
+
+	public String getName()
+	{
+		return getClass().getAnnotation(PluginDescriptor.class).name();
+	}
+
+	/**
+	 * Gets this plugin's data directory, located in .runelite/plugin-data/[internal-name]. If
+	 * {@link PluginDescriptor#legacyDataDirectory()} is set, it will be migrated to the plugin's
+	 * data directory on the first call of {@code getPluginDirectory}
+	 */
+	protected final Filepath getPluginDirectory() throws IOException
+	{
+		var desc = getClass().getAnnotation(PluginDescriptor.class);
+
+		var internalName = desc.internalName();
+		if (Strings.isNullOrEmpty(internalName))
+		{
+			throw new IllegalArgumentException("internalName must be set in @PluginDescriptor.");
+		}
+
+		if (!Files.exists(RuneLite.PLUGIN_DATA))
+		{
+			try
+			{
+				Files.createDirectories(RuneLite.PLUGIN_DATA);
+			}
+			catch (FileNotFoundException ignored)
+			{
+			}
+		}
+
+		var fp = Filepath.Unchecked.getRooted(RuneLite.PLUGIN_DATA)
+			.joinSegment(internalName)
+			.rooted();
+
+		var legacyName = desc.legacyDataDirectory();
+		if (!Strings.isNullOrEmpty(legacyName))
+		{
+			var legacy = Filepath.Unchecked.getLegacyPluginDirectory(RuneLite.RUNELITE_DIR.toPath(), legacyName);
+
+			if (!fp.exists() && legacy.exists())
+			{
+				legacy.moveTo(fp);
+			}
+		}
+
+		return fp;
 	}
 }

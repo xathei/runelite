@@ -28,19 +28,28 @@ package net.runelite.client.plugins.cooking;
 import com.google.inject.Provides;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import javax.inject.Inject;
 import lombok.AccessLevel;
 import lombok.Getter;
+import lombok.Setter;
 import net.runelite.api.ChatMessageType;
+import net.runelite.api.Client;
+import net.runelite.api.Player;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.GraphicChanged;
+import net.runelite.api.gameval.ItemID;
+import net.runelite.api.gameval.SpotanimID;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDependency;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.xptracker.XpTrackerPlugin;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
 
 @PluginDescriptor(
 	name = "Cooking",
@@ -51,6 +60,9 @@ import net.runelite.client.ui.overlay.OverlayManager;
 public class CookingPlugin extends Plugin
 {
 	@Inject
+	private Client client;
+
+	@Inject
 	private CookingConfig config;
 
 	@Inject
@@ -59,7 +71,14 @@ public class CookingPlugin extends Plugin
 	@Inject
 	private OverlayManager overlayManager;
 
+	@Inject
+	private InfoBoxManager infoBoxManager;
+
+	@Inject
+	private ItemManager itemManager;
+
 	@Getter(AccessLevel.PACKAGE)
+	@Setter(AccessLevel.PACKAGE)
 	private CookingSession session;
 
 	@Provides
@@ -78,6 +97,7 @@ public class CookingPlugin extends Plugin
 	@Override
 	protected void shutDown() throws Exception
 	{
+		infoBoxManager.removeIf(FermentTimer.class::isInstance);
 		overlayManager.remove(overlay);
 		session = null;
 	}
@@ -91,11 +111,41 @@ public class CookingPlugin extends Plugin
 		}
 
 		Duration statTimeout = Duration.ofMinutes(config.statTimeout());
-		Duration sinceCut = Duration.between(session.getLastCookingAction(), Instant.now());
+		Duration sinceCooked = Duration.between(session.getLastCookingAction(), Instant.now());
 
-		if (sinceCut.compareTo(statTimeout) >= 0)
+		if (sinceCooked.compareTo(statTimeout) >= 0)
 		{
 			session = null;
+		}
+	}
+
+	@Subscribe
+	public void onGraphicChanged(GraphicChanged graphicChanged)
+	{
+		Player player = client.getLocalPlayer();
+
+		if (graphicChanged.getActor() != player)
+		{
+			return;
+		}
+
+		if (player.getGraphic() == SpotanimID.COOKING_MAKE_WINE_SPOTANIM && config.fermentTimer())
+		{
+			Optional<FermentTimer> fermentTimerOpt = infoBoxManager.getInfoBoxes().stream()
+				.filter(FermentTimer.class::isInstance)
+				.map(FermentTimer.class::cast)
+				.findAny();
+
+			if (fermentTimerOpt.isPresent())
+			{
+				FermentTimer fermentTimer = fermentTimerOpt.get();
+				fermentTimer.reset();
+			}
+			else
+			{
+				FermentTimer fermentTimer = new FermentTimer(itemManager.getImage(ItemID.JUG_WINE), this);
+				infoBoxManager.addInfoBox(fermentTimer);
+			}
 		}
 	}
 
@@ -111,10 +161,17 @@ public class CookingPlugin extends Plugin
 
 		if (message.startsWith("You successfully cook")
 			|| message.startsWith("You successfully bake")
+			|| message.startsWith("You successfully fry")
 			|| message.startsWith("You manage to cook")
 			|| message.startsWith("You roast a")
+			|| message.startsWith("You spit-roast")
 			|| message.startsWith("You cook")
-			|| message.startsWith("You squeeze the grapes into the jug"))
+			|| message.startsWith("Eventually the Jubbly")
+			|| message.startsWith("You half-cook")
+			|| message.startsWith("The undead meat is now cooked")
+			|| message.startsWith("The undead chicken is now cooked")
+			|| message.startsWith("You successfully scramble")
+			|| message.startsWith("You dry a piece of meat"))
 		{
 			if (session == null)
 			{
@@ -125,7 +182,10 @@ public class CookingPlugin extends Plugin
 			session.increaseCookAmount();
 
 		}
-		else if (message.startsWith("You accidentally burn"))
+		else if (message.startsWith("You accidentally burn")
+			|| message.equals("You burn the mushroom in the fire.")
+			|| message.startsWith("Unfortunately the Jubbly")
+			|| message.startsWith("You accidentally spoil"))
 		{
 			if (session == null)
 			{

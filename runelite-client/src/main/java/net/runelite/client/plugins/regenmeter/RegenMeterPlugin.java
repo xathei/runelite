@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2018 Abex
+ * Copyright (c) 2019, Sean Dewar <https://github.com/seandewar>
+ * Copyright (c) 2018, Abex
  * Copyright (c) 2018, Zimaya <https://github.com/Zimaya>
  * Copyright (c) 2017, Adam <Adam@sigterm.info>
  * All rights reserved.
@@ -30,13 +31,20 @@ import com.google.inject.Provides;
 import javax.inject.Inject;
 import lombok.Getter;
 import net.runelite.api.Client;
+import net.runelite.api.Constants;
 import net.runelite.api.GameState;
+import net.runelite.api.ItemContainer;
 import net.runelite.api.Prayer;
 import net.runelite.api.Skill;
-import net.runelite.api.VarPlayer;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.ItemID;
+import net.runelite.api.gameval.VarPlayerID;
+import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.Notifier;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -46,7 +54,7 @@ import net.runelite.client.ui.overlay.OverlayManager;
 @PluginDescriptor(
 	name = "Regeneration Meter",
 	description = "Track and show the hitpoints and special attack regeneration timers",
-	tags = {"combat", "health", "hitpoints", "special", "attack", "overlay"}
+	tags = {"combat", "health", "hitpoints", "special", "attack", "overlay", "notifications"}
 )
 public class RegenMeterPlugin extends Plugin
 {
@@ -58,6 +66,9 @@ public class RegenMeterPlugin extends Plugin
 
 	@Inject
 	private OverlayManager overlayManager;
+
+	@Inject
+	private Notifier notifier;
 
 	@Inject
 	private RegenMeterOverlay overlay;
@@ -73,7 +84,8 @@ public class RegenMeterPlugin extends Plugin
 
 	private int ticksSinceSpecRegen;
 	private int ticksSinceHPRegen;
-	private boolean wasRapidHeal;
+
+	private boolean wearingLightbearer;
 
 	@Provides
 	RegenMeterConfig provideConfig(ConfigManager configManager)
@@ -104,29 +116,50 @@ public class RegenMeterPlugin extends Plugin
 	}
 
 	@Subscribe
+	public void onItemContainerChanged(ItemContainerChanged event)
+	{
+		if (event.getContainerId() != InventoryID.WORN)
+		{
+			return;
+		}
+
+		ItemContainer equipment = event.getItemContainer();
+		final boolean hasLightbearer = equipment.contains(ItemID.LIGHTBEARER);
+		if (hasLightbearer == wearingLightbearer)
+		{
+			return;
+		}
+
+		// Lightbearer switch preserves time until next spec regen if <25 ticks remain
+		// If unequipping Lightbearer, this will always evaluate to 0
+		ticksSinceSpecRegen = Math.max(0, ticksSinceSpecRegen - 25);
+		wearingLightbearer = hasLightbearer;
+	}
+
+	@Subscribe
 	private void onVarbitChanged(VarbitChanged ev)
 	{
-		boolean isRapidHeal = client.isPrayerActive(Prayer.RAPID_HEAL);
-		if (wasRapidHeal != isRapidHeal)
+		if (ev.getVarbitId() == VarbitID.PRAYER_RAPIDHEAL)
 		{
 			ticksSinceHPRegen = 0;
 		}
-		wasRapidHeal = isRapidHeal;
 	}
 
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		if (client.getVar(VarPlayer.SPECIAL_ATTACK_PERCENT) == 1000)
+		final int ticksPerSpecRegen = wearingLightbearer ? SPEC_REGEN_TICKS / 2 : SPEC_REGEN_TICKS;
+
+		if (client.getVarpValue(VarPlayerID.SA_ENERGY) == 1000)
 		{
 			// The recharge doesn't tick when at 100%
 			ticksSinceSpecRegen = 0;
 		}
 		else
 		{
-			ticksSinceSpecRegen = (ticksSinceSpecRegen + 1) % SPEC_REGEN_TICKS;
+			ticksSinceSpecRegen = (ticksSinceSpecRegen + 1) % ticksPerSpecRegen;
 		}
-		specialPercentage = ticksSinceSpecRegen / (double) SPEC_REGEN_TICKS;
+		specialPercentage = ticksSinceSpecRegen / (double) ticksPerSpecRegen;
 
 
 		int ticksPerHPRegen = NORMAL_HP_REGEN_TICKS;
@@ -149,5 +182,18 @@ public class RegenMeterPlugin extends Plugin
 			// Show it going down
 			hitpointsPercentage = 1 - hitpointsPercentage;
 		}
+
+		if (config.getNotifyBeforeHpRegenSeconds() > 0 && currentHP < maxHP && shouldNotifyHpRegenThisTick(ticksPerHPRegen))
+		{
+			notifier.notify("Your next hitpoint will regenerate soon!");
+		}
+	}
+
+	private boolean shouldNotifyHpRegenThisTick(int ticksPerHPRegen)
+	{
+		// if the configured duration lies between two ticks, choose the earlier tick
+		final int ticksBeforeHPRegen = ticksPerHPRegen - ticksSinceHPRegen;
+		final int notifyTick = (int) Math.ceil(config.getNotifyBeforeHpRegenSeconds() * 1000d / Constants.GAME_TICK_LENGTH);
+		return ticksBeforeHPRegen == notifyTick;
 	}
 }

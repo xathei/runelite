@@ -31,12 +31,11 @@ import javax.inject.Inject;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
-import net.runelite.api.VarClientInt;
-import net.runelite.api.VarPlayer;
-import net.runelite.api.Varbits;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
-import net.runelite.api.vars.AccountType;
+import net.runelite.api.gameval.VarClientID;
+import net.runelite.api.gameval.VarPlayerID;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.chat.ChatColorType;
 import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
@@ -63,10 +62,10 @@ public class DailyTasksPlugin extends Plugin
 	private static final String SAND_MESSAGE = "You have sand waiting to be collected from Bert.";
 	private static final int SAND_QUEST_COMPLETE = 160;
 	private static final String FLAX_MESSAGE = "You have bowstrings waiting to be converted from flax from the Flax keeper.";
+	private static final String ARROWS_MESSAGE = "You have ogre arrows waiting to be collected from Rantz.";
 	private static final String BONEMEAL_MESSAGE = "You have bonemeal and slime waiting to be collected from Robin.";
 	private static final int BONEMEAL_PER_DIARY = 13;
 	private static final String DYNAMITE_MESSAGE = "You have dynamite waiting to be collected from Thirus.";
-	private static final String RELOG_MESSAGE = " (May require a relog)";
 
 	@Inject
 	private Client client;
@@ -114,7 +113,7 @@ public class DailyTasksPlugin extends Plugin
 		boolean dailyReset = !loggingIn && currentTime - lastReset > ONE_DAY;
 
 		if ((dailyReset || loggingIn)
-			&& client.getVar(VarClientInt.MEMBERSHIP_STATUS) == 1)
+			&& client.getVarcIntValue(VarClientID.PLAYERMEMBER) == 1)
 		{
 			// Round down to the nearest day
 			lastReset = (long) Math.floor(currentTime / ONE_DAY) * ONE_DAY;
@@ -160,119 +159,100 @@ public class DailyTasksPlugin extends Plugin
 				checkDynamite(dailyReset);
 			}
 
+			if (config.showArrows())
+			{
+				checkArrows(dailyReset);
+			}
 		}
 	}
 
 	private void checkHerbBoxes(boolean dailyReset)
 	{
-		if (client.getAccountType() == AccountType.NORMAL
-			&& client.getVar(VarPlayer.NMZ_REWARD_POINTS) >= HERB_BOX_COST)
+		if (client.getVarbitValue(VarbitID.IRONMAN) == 0
+			&& client.getVarpValue(VarPlayerID.NZONE_REWARDPOINTS) >= HERB_BOX_COST
+			&& (client.getVarbitValue(VarbitID.NZONE_HERBBOXES_PURCHASED) < HERB_BOX_MAX
+			|| dailyReset))
 		{
-			if (client.getVar(Varbits.DAILY_HERB_BOXES_COLLECTED) < HERB_BOX_MAX)
-			{
-				sendChatMessage(HERB_BOX_MESSAGE);
-			}
-			else if (dailyReset)
-			{
-				sendChatMessage(HERB_BOX_MESSAGE);
-			}
+			sendChatMessage(HERB_BOX_MESSAGE);
 		}
 	}
 
 	private void checkStaves(boolean dailyReset)
 	{
-		if (client.getVar(Varbits.DIARY_VARROCK_EASY) == 1)
+		if (client.getVarbitValue(VarbitID.VARROCK_DIARY_EASY_COMPLETE) == 1
+			&& (client.getVarbitValue(VarbitID.ZAFF_LAST_CLAIMED) == 0
+			|| dailyReset))
 		{
-			if (client.getVar(Varbits.DAILY_STAVES_COLLECTED) == 0)
-			{
-				sendChatMessage(STAVES_MESSAGE);
-			}
-			else if (dailyReset)
-			{
-				sendChatMessage(STAVES_MESSAGE + RELOG_MESSAGE);
-			}
+			sendChatMessage(STAVES_MESSAGE);
 		}
 	}
 
 	private void checkEssence(boolean dailyReset)
 	{
-		if (client.getVar(Varbits.DIARY_ARDOUGNE_MEDIUM) == 1)
+		if (client.getVarbitValue(VarbitID.ARDOUGNE_DIARY_MEDIUM_COMPLETE) == 1
+			&& (client.getVarbitValue(VarbitID.ARDOUGNE_FREE_ESSENCE) == 0
+			|| dailyReset))
 		{
-			if (client.getVar(Varbits.DAILY_ESSENCE_COLLECTED) == 0)
-			{
-				sendChatMessage(ESSENCE_MESSAGE);
-			}
-			else if (dailyReset)
-			{
-				sendChatMessage(ESSENCE_MESSAGE);
-			}
+			sendChatMessage(ESSENCE_MESSAGE);
 		}
 	}
 
 	private void checkRunes(boolean dailyReset)
 	{
-		if (client.getVar(Varbits.DIARY_WILDERNESS_EASY) == 1)
+		if (client.getVarbitValue(VarbitID.WILDERNESS_DIARY_EASY_COMPLETE) == 1
+			&& (client.getVarbitValue(VarbitID.LUNDAIL_LAST_CLAIMED) == 0
+			|| dailyReset))
 		{
-			if (client.getVar(Varbits.DAILY_RUNES_COLLECTED) == 0)
-			{
-				sendChatMessage(RUNES_MESSAGE);
-			}
-			else if (dailyReset)
-			{
-				sendChatMessage(RUNES_MESSAGE);
-			}
+			sendChatMessage(RUNES_MESSAGE);
 		}
 	}
 
 	private void checkSand(boolean dailyReset)
 	{
-		if (client.getVar(Varbits.QUEST_THE_HAND_IN_THE_SAND) >= SAND_QUEST_COMPLETE)
+		if (client.getVarbitValue(VarbitID.IRONMAN) != 2 /* UIM */
+			&& client.getVarbitValue(VarbitID.HANDSAND_QUEST) >= SAND_QUEST_COMPLETE
+			&& (client.getVarbitValue(VarbitID.YANILLE_SAND_CLAIMED) == 0
+			|| dailyReset))
 		{
-			if (client.getVar(Varbits.DAILY_SAND_COLLECTED) == 0)
-			{
-				sendChatMessage(SAND_MESSAGE);
-			}
-			else if (dailyReset)
-			{
-				sendChatMessage(SAND_MESSAGE);
-			}
+			sendChatMessage(SAND_MESSAGE);
 		}
 	}
 
 	private void checkFlax(boolean dailyReset)
 	{
-		if (client.getVar(Varbits.DIARY_KANDARIN_EASY) == 1)
+		if (client.getVarbitValue(VarbitID.KANDARIN_DIARY_EASY_COMPLETE) == 1
+			&& (client.getVarbitValue(VarbitID.SEERS_FREE_FLAX) == 0
+			|| dailyReset))
 		{
-			if (client.getVar(Varbits.DAILY_FLAX_STATE) == 0)
-			{
-				sendChatMessage(FLAX_MESSAGE);
-			}
-			else if (dailyReset)
-			{
-				sendChatMessage(FLAX_MESSAGE);
-			}
+			sendChatMessage(FLAX_MESSAGE);
+		}
+	}
+
+	private void checkArrows(boolean dailyReset)
+	{
+		if (client.getVarbitValue(VarbitID.WESTERN_DIARY_EASY_COMPLETE) == 1
+			&& (client.getVarbitValue(VarbitID.WESTERN_RANTZ_ARROWS) == 0
+			|| dailyReset))
+		{
+			sendChatMessage(ARROWS_MESSAGE);
 		}
 	}
 
 	private void checkBonemeal(boolean dailyReset)
 	{
-		if (client.getVar(Varbits.DIARY_MORYTANIA_MEDIUM) == 1)
+		if (client.getVarbitValue(VarbitID.MORYTANIA_DIARY_MEDIUM_COMPLETE) == 1)
 		{
-			int collected = client.getVar(Varbits.DAILY_BONEMEAL_STATE);
+			int collected = client.getVarbitValue(VarbitID.MORYTANIA_SLIME_CLAIMED);
 			int max = BONEMEAL_PER_DIARY;
-			if (client.getVar(Varbits.DIARY_MORYTANIA_HARD) == 1)
+			if (client.getVarbitValue(VarbitID.MORYTANIA_DIARY_HARD_COMPLETE) == 1)
 			{
 				max += BONEMEAL_PER_DIARY;
-				if (client.getVar(Varbits.DIARY_MORYTANIA_ELITE) == 1)
+				if (client.getVarbitValue(VarbitID.MORYTANIA_DIARY_ELITE_COMPLETE) == 1)
 				{
 					max += BONEMEAL_PER_DIARY;
 				}
 			}
-			if (collected < max)
-			{
-				sendChatMessage(BONEMEAL_MESSAGE);
-			}
-			else if (dailyReset)
+			if (collected < max || dailyReset)
 			{
 				sendChatMessage(BONEMEAL_MESSAGE);
 			}
@@ -281,16 +261,11 @@ public class DailyTasksPlugin extends Plugin
 
 	private void checkDynamite(boolean dailyReset)
 	{
-		if (client.getVar(Varbits.DIARY_KOUREND_MEDIUM) == 1)
+		if (client.getVarbitValue(VarbitID.KOUREND_DIARY_MEDIUM_COMPLETE) == 1
+			&& (client.getVarbitValue(VarbitID.KOUREND_FREE_DYNAMITE) == 0
+			|| dailyReset))
 		{
-			if (client.getVar(Varbits.DAILY_DYNAMITE_COLLECTED) == 0)
-			{
-				sendChatMessage(DYNAMITE_MESSAGE);
-			}
-			else if (dailyReset)
-			{
-				sendChatMessage(DYNAMITE_MESSAGE);
-			}
+			sendChatMessage(DYNAMITE_MESSAGE);
 		}
 	}
 

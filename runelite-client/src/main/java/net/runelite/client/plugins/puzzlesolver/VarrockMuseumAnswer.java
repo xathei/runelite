@@ -25,13 +25,13 @@
  */
 package net.runelite.client.plugins.puzzlesolver;
 
-import java.util.HashMap;
+import com.google.common.collect.ImmutableMap;
 import java.util.Map;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import net.runelite.api.Client;
+import net.runelite.api.annotations.Component;
 import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetInfo;
 
 @Getter
 @RequiredArgsConstructor
@@ -135,24 +135,28 @@ enum VarrockMuseumAnswer
 	LEECH_5("What is special about Morytanian leeches?", "They attack by jumping."),
 	LEECH_6("How does a leech change when it feeds?", "It doubles in size.");
 
-	private static final Map<String, String> MATCHES = new HashMap<>();
+	private static final Map<String, String> MATCHES;
 
 	static
 	{
+		ImmutableMap.Builder<String, String> builder = new ImmutableMap.Builder<>();
+
 		for (VarrockMuseumAnswer varrockMuseumAnswer : VarrockMuseumAnswer.values())
 		{
-			MATCHES.put(varrockMuseumAnswer.question, varrockMuseumAnswer.answer);
+			builder.put(varrockMuseumAnswer.question, varrockMuseumAnswer.answer);
 		}
+
+		MATCHES = builder.build();
 	}
 
 	private final String question;
 	private final String answer;
 
-	static Widget findCorrect(final Client client, final String question, final WidgetInfo... widgets)
+	static Widget findCorrect(final Client client, final String question, @Component final int... widgets)
 	{
 		final String s = MATCHES.get(question);
 
-		for (WidgetInfo widgetInfo : widgets)
+		for (int widgetInfo : widgets)
 		{
 			final Widget widget = client.getWidget(widgetInfo);
 

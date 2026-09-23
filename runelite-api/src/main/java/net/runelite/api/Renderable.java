@@ -24,6 +24,8 @@
  */
 package net.runelite.api;
 
+import org.intellij.lang.annotations.MagicConstant;
+
 /**
  * Represents an object that can be rendered.
  */
@@ -31,12 +33,24 @@ public interface Renderable extends Node
 {
 	/**
 	 * Gets the model of the object.
-	 *
-	 * @return the model
 	 */
 	Model getModel();
 
+	/**
+	 * Gets the height of the model.
+	 */
+	int getModelHeight();
+
 	void setModelHeight(int modelHeight);
 
-	void draw(int orientation, int pitchSin, int pitchCos, int yawSin, int yawCos, int x, int y, int z, long hash);
+	int getAnimationHeightOffset();
+
+	@MagicConstant(intValues = {RENDERMODE_DEFAULT, RENDERMODE_SORTED, RENDERMODE_SORTED_NO_DEPTH, RENDERMODE_UNSORTED, RENDERMODE_UNSORTED_NO_DEPTH})
+	int getRenderMode();
+
+	int RENDERMODE_DEFAULT = 0;
+	int RENDERMODE_SORTED = 1;
+	int RENDERMODE_SORTED_NO_DEPTH = 2;
+	int RENDERMODE_UNSORTED = 3;
+	int RENDERMODE_UNSORTED_NO_DEPTH = 4;
 }

@@ -38,6 +38,7 @@ import net.runelite.cache.fs.FSFile;
 import net.runelite.cache.fs.Index;
 import net.runelite.cache.fs.Storage;
 import net.runelite.cache.fs.Store;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -54,6 +55,7 @@ public class SequenceDumper
 	private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
 	@Test
+	@Ignore
 	public void extract() throws IOException
 	{
 		File base = StoreLocation.LOCATION,
@@ -75,9 +77,10 @@ public class SequenceDumper
 			for (FSFile file : files.getFiles())
 			{
 				SequenceLoader loader = new SequenceLoader();
+				loader.configureForRevision(archive.getRevision());
 				SequenceDefinition seq = loader.load(file.getFileId(), file.getContents());
 
-				Files.write(gson.toJson(seq), new File(outDir, file.getFileId() + ".json"), Charset.defaultCharset());
+				Files.asCharSink(new File(outDir, file.getFileId() + ".json"), Charset.defaultCharset()).write(gson.toJson(seq));
 				++count;
 			}
 		}

@@ -36,7 +36,7 @@ public interface DailyTasksConfig extends Config
 	@ConfigItem(
 		position = 1,
 		keyName = "showHerbBoxes",
-		name = "Show Herb Boxes",
+		name = "Show herb boxes",
 		description = "Show a message when you can collect your daily herb boxes at NMZ."
 	)
 	default boolean showHerbBoxes()
@@ -47,7 +47,7 @@ public interface DailyTasksConfig extends Config
 	@ConfigItem(
 		position = 2,
 		keyName = "showStaves",
-		name = "Show Claimable Staves",
+		name = "Show claimable staves",
 		description = "Show a message when you can collect your daily battlestaves from Zaff."
 	)
 	default boolean showStaves()
@@ -58,65 +58,76 @@ public interface DailyTasksConfig extends Config
 	@ConfigItem(
 		position = 3,
 		keyName = "showEssence",
-		name = "Show Claimable Essence",
+		name = "Show claimable essence",
 		description = "Show a message when you can collect your daily pure essence from Wizard Cromperty."
 	)
 	default boolean showEssence()
 	{
-		return true;
+		return false;
 	}
 
 	@ConfigItem(
 		position = 4,
 		keyName = "showRunes",
-		name = "Show Claimable Random Runes",
+		name = "Show claimable random runes",
 		description = "Show a message when you can collect your daily random runes from Lundail."
 	)
 	default boolean showRunes()
 	{
-		return true;
+		return false;
 	}
 
 	@ConfigItem(
 		position = 5,
 		keyName = "showSand",
-		name = "Show Claimable Sand",
+		name = "Show claimable sand",
 		description = "Show a message when you can collect your daily sand from Bert."
 	)
 	default boolean showSand()
 	{
-		return true;
+		return false;
 	}
 
 	@ConfigItem(
 		position = 6,
 		keyName = "showFlax",
-		name = "Show Claimable Bow Strings",
+		name = "Show claimable bow strings",
 		description = "Show a message when you can convert noted flax to bow strings with the Flax keeper."
 	)
 	default boolean showFlax()
 	{
-		return true;
+		return false;
 	}
 
 	@ConfigItem(
 		position = 7,
 		keyName = "showBonemeal",
-		name = "Show Claimable Bonemeal & Slime",
+		name = "Show claimable bonemeal & slime",
 		description = "Show a message when you can collect bonemeal & slime from Robin."
 	)
 	default boolean showBonemeal()
 	{
-		return true;
+		return false;
 	}
 
 	@ConfigItem(
 		position = 8,
 		keyName = "showDynamite",
-		name = "Show Claimable Dynamite",
-		description = "Show a message when you can collect Dynamite from Thirus."
+		name = "Show claimable dynamite",
+		description = "Show a message when you can collect dynamite from Thirus."
 	)
 	default boolean showDynamite()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		position = 9,
+		keyName = "showArrows",
+		name = "Show claimable ogre arrows",
+		description = "Show a message when you can collect ogre arrows from Rantz."
+	)
+	default boolean showArrows()
 	{
 		return false;
 	}

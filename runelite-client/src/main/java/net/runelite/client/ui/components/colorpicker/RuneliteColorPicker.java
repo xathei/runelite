@@ -28,23 +28,35 @@ package net.runelite.client.ui.components.colorpicker;
 import com.google.common.base.Strings;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.GraphicsConfiguration;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
+import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.util.Arrays;
+import java.util.Objects;
 import java.util.function.Consumer;
+import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import javax.swing.KeyStroke;
 import javax.swing.border.EmptyBorder;
 import javax.swing.text.AbstractDocument;
 import javax.swing.text.AttributeSet;
@@ -53,13 +65,16 @@ import javax.swing.text.Document;
 import javax.swing.text.DocumentFilter;
 import lombok.Getter;
 import lombok.Setter;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.util.ColorUtil;
-import org.pushingpixels.substance.internal.SubstanceSynapse;
 
 public class RuneliteColorPicker extends JDialog
 {
-	private final static int FRAME_WIDTH = 400;
+	static final String CONFIG_GROUP = "colorpicker";
+
+	private final static int FRAME_WIDTH = 410;
 	private final static int FRAME_HEIGHT = 380;
 	private final static int TONE_PANEL_SIZE = 160;
 
@@ -84,19 +99,26 @@ public class RuneliteColorPicker extends JDialog
 	@Setter
 	private Consumer<Color> onColorChange;
 
-	public RuneliteColorPicker(Window parent, Color previousColor, String title, boolean alphaHidden)
+	@Setter
+	private Consumer<Color> onClose;
+
+	RuneliteColorPicker(Window parent, Color previousColor, String title, boolean alphaHidden,
+		final ConfigManager configManager, final ColorPickerManager colorPickerManager)
 	{
 		super(parent, "RuneLite Color Picker - " + title, ModalityType.MODELESS);
 
 		this.selectedColor = previousColor;
+		this.alphaHidden = alphaHidden;
+
+		RecentColors recentColors = new RecentColors(configManager);
 
 		setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 		setResizable(false);
 		setSize(FRAME_WIDTH, FRAME_HEIGHT);
-		setBackground(ColorScheme.PROGRESS_COMPLETE_COLOR);
+		setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+		setIconImages(Arrays.asList(ClientUI.ICON_128, ClientUI.ICON_16));
 
 		JPanel content = new JPanel(new BorderLayout());
-		content.putClientProperty(SubstanceSynapse.COLORIZATION_FACTOR, 1.0);
 		content.setBorder(new EmptyBorder(15, 15, 15, 15));
 
 		JPanel colorSelection = new JPanel(new BorderLayout(15, 0));
@@ -108,7 +130,6 @@ public class RuneliteColorPicker extends JDialog
 		JPanel rightPanel = new JPanel();
 		rightPanel.setLayout(new GridBagLayout());
 		GridBagConstraints cx = new GridBagConstraints();
-
 
 		cx.insets = new Insets(0, 0, 0, 0);
 		JLabel old = new JLabel("Previous");
@@ -140,11 +161,26 @@ public class RuneliteColorPicker extends JDialog
 		hexContainer.add(hexInput, cx);
 
 		cx.fill = GridBagConstraints.BOTH;
-		cx.gridwidth = GridBagConstraints.RELATIVE;
 		cx.weightx = 1;
 		cx.weighty = 1;
 		cx.gridy = 0;
 		cx.gridx = 0;
+
+		JPanel recentColorsContainer = recentColors.build(c ->
+		{
+			if (!alphaHidden)
+			{
+				alphaSlider.update(c.getAlpha());
+			}
+
+			colorChange(c);
+			updatePanels();
+		}, alphaHidden);
+
+		rightPanel.add(recentColorsContainer, cx);
+
+		cx.gridwidth = GridBagConstraints.RELATIVE;
+		cx.gridy++;
 		rightPanel.add(old, cx);
 
 		cx.gridx++;
@@ -176,7 +212,6 @@ public class RuneliteColorPicker extends JDialog
 		slidersContainer.add(blueSlider);
 		slidersContainer.add(alphaSlider);
 
-		this.alphaHidden = alphaHidden;
 		if (alphaHidden)
 		{
 			alphaSlider.setVisible(false);
@@ -265,6 +300,38 @@ public class RuneliteColorPicker extends JDialog
 
 		updatePanels();
 		updateText();
+
+		addWindowListener(new WindowAdapter()
+		{
+			@Override
+			public void windowClosing(WindowEvent e)
+			{
+				//  force update hex color because focus lost events fire after window closing
+				updateHex();
+
+				if (onClose != null)
+				{
+					onClose.accept(selectedColor);
+				}
+
+				if (!Objects.equals(previousColor, selectedColor))
+				{
+					recentColors.add(selectedColor.getRGB() + "");
+				}
+
+				RuneliteColorPicker cp = colorPickerManager.getCurrentPicker();
+				if (Objects.equals(cp, RuneliteColorPicker.this))
+				{
+					colorPickerManager.setCurrentPicker(null);
+				}
+			}
+		});
+
+		getRootPane().registerKeyboardAction(
+			_ev -> this.dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING)),
+			KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+			JComponent.WHEN_IN_FOCUSED_WINDOW
+		);
 	}
 
 	private void updatePanels()
@@ -340,6 +407,60 @@ public class RuneliteColorPicker extends JDialog
 
 		colorChange(color);
 		updatePanels();
+	}
+
+	@Override
+	public void setLocationRelativeTo(Component c)
+	{
+		if (this.getOwner() == null)
+		{
+			super.setLocationRelativeTo(c);
+			return;
+		}
+
+		GraphicsConfiguration gc = this.getOwner().getGraphicsConfiguration();
+		Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(gc);
+
+		Rectangle gcBounds = gc.getBounds();
+		gcBounds.setRect(
+			gcBounds.x + insets.left,
+			gcBounds.y + insets.top,
+			gcBounds.width - insets.left - insets.right,
+			gcBounds.height - insets.top - insets.bottom);
+
+		Dimension compSize = c.getSize();
+		Point compLocation = c.getLocationOnScreen();
+		Dimension windowSize = getSize();
+
+		int dx = compLocation.x + ((compSize.width - windowSize.width) / 2);
+		int dy = compLocation.y + ((compSize.height - windowSize.height) / 2);
+
+		// Avoid being placed off the edge of the screen:
+		// bottom
+		if (dy + windowSize.height > gcBounds.y + gcBounds.height)
+		{
+			dy = gcBounds.y + gcBounds.height - windowSize.height;
+		}
+
+		// top
+		if (dy < gcBounds.y)
+		{
+			dy = gcBounds.y;
+		}
+
+		// right
+		if (dx + windowSize.width > gcBounds.x + gcBounds.width)
+		{
+			dx = gcBounds.x + gcBounds.width - windowSize.width;
+		}
+
+		// left
+		if (dx < gcBounds.x)
+		{
+			dx = gcBounds.x;
+		}
+
+		setLocation(dx, dy);
 	}
 
 	/**

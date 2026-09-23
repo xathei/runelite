@@ -33,6 +33,7 @@ import javax.inject.Inject;
 import lombok.Getter;
 import net.runelite.api.Client;
 import net.runelite.api.Perspective;
+import net.runelite.api.Player;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
@@ -40,12 +41,15 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 
 public class PohOverlay extends Overlay
 {
-	private static final PohIcons[] PORTALS = new PohIcons[]
-	{
+	private static final PohIcons[] PORTALS = {
 		PohIcons.LUMBRIDGE, PohIcons.FALADOR, PohIcons.VARROCK, PohIcons.CAMELOT, PohIcons.ARDOUGNE,
 		PohIcons.YANILLE, PohIcons.LUNARISLE, PohIcons.WATERBIRTH, PohIcons.FISHINGGUILD,
-		PohIcons.SENNTISTEN, PohIcons.KHARYLL, PohIcons.ANNAKARL, PohIcons.KOUREND, PohIcons.MARIM, PohIcons.TROLLSTRONGHOLD, PohIcons.CARRALLANGAR, PohIcons.CATHERBY, PohIcons.GHORROCK
-
+		PohIcons.SENNTISTEN, PohIcons.KHARYLL, PohIcons.ANNAKARL, PohIcons.KOUREND, PohIcons.MARIM,
+		PohIcons.TROLLSTRONGHOLD, PohIcons.CARRALLANGER, PohIcons.CATHERBY, PohIcons.WEISS, PohIcons.GHORROCK,
+		PohIcons.APEATOLLDUNGEON, PohIcons.BARROWS, PohIcons.BATTLEFRONT, PohIcons.CEMETERY, PohIcons.DRAYNORMANOR,
+		PohIcons.FENKENSTRAINSCASTLE, PohIcons.HARMONYISLAND, PohIcons.ARCEUUSLIBRARY, PohIcons.MINDALTAR, PohIcons.SALVEGRAVEYARD,
+		PohIcons.WESTARDOUGNE, PohIcons.CIVITASILLAFORTIS, PohIcons.TROLLHEIM, PohIcons.PADDEWWA, PohIcons.LASSAR, PohIcons.DAREEYAK,
+		PohIcons.OURANIA, PohIcons.BARBARIAN, PohIcons.KHAZARD, PohIcons.ICEPLATEAU, PohIcons.RESPAWN, PohIcons.BOAT
 	};
 
 	private static final int MAX_DISTANCE = 2350;
@@ -70,7 +74,13 @@ public class PohOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		LocalPoint localLocation = client.getLocalPlayer().getLocalLocation();
+		Player player = client.getLocalPlayer();
+		if (player == null)
+		{
+			return null;
+		}
+
+		LocalPoint localLocation = player.getLocalLocation();
 		plugin.getPohObjects().forEach((object, tile) ->
 		{
 			LocalPoint location = object.getLocalLocation();
@@ -143,6 +153,10 @@ public class PohOverlay extends Overlay
 		if (config.showXericsTalisman())
 		{
 			iconList.add(PohIcons.XERICSTALISMAN);
+		}
+		if (config.showMythicalCape())
+		{
+			iconList.add(PohIcons.MYTHICALCAPE);
 		}
 	}
 }

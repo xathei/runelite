@@ -34,12 +34,10 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 /**
  * Wrapper for ${@link ScheduledExecutorService} that will log all uncaught exceptions as warning to console
  */
-@Slf4j
 @RequiredArgsConstructor
 public class ExecutorServiceExceptionLogger implements ScheduledExecutorService
 {
@@ -77,6 +75,18 @@ public class ExecutorServiceExceptionLogger implements ScheduledExecutorService
 	public void execute(Runnable command)
 	{
 		service.execute(monitor(command));
+	}
+
+	@Override
+	public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit)
+	{
+		return service.scheduleAtFixedRate(monitor(command), initialDelay, period, unit);
+	}
+
+	@Override
+	public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit)
+	{
+		return service.scheduleWithFixedDelay(monitor(command), initialDelay, delay, unit);
 	}
 
 	// Everything below is direct proxy to provided executor service
@@ -145,17 +155,5 @@ public class ExecutorServiceExceptionLogger implements ScheduledExecutorService
 	public <V> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit)
 	{
 		return service.schedule(callable, delay, unit);
-	}
-
-	@Override
-	public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit)
-	{
-		return service.scheduleAtFixedRate(command, initialDelay, period, unit);
-	}
-
-	@Override
-	public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit)
-	{
-		return service.scheduleWithFixedDelay(command, initialDelay, delay, unit);
 	}
 }

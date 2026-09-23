@@ -24,19 +24,22 @@
  */
 package net.runelite.client.plugins.prayer;
 
-import java.util.HashMap;
+import com.google.common.collect.ImmutableMap;
 import java.util.Map;
-import net.runelite.api.ItemID;
+import net.runelite.api.gameval.ItemID;
 
 enum PrayerRestoreType
 {
-	RESTOREPOT(ItemID.SUPER_RESTORE4, ItemID.SUPER_RESTORE3, ItemID.SUPER_RESTORE2, ItemID.SUPER_RESTORE1),
-	PRAYERPOT(ItemID.PRAYER_POTION4, ItemID.PRAYER_POTION3, ItemID.PRAYER_POTION2, ItemID.PRAYER_POTION1),
-	SANFEWPOT(ItemID.SANFEW_SERUM4, ItemID.SANFEW_SERUM3, ItemID.SANFEW_SERUM2, ItemID.SANFEW_SERUM1),
-	HOLYWRENCH(ItemID.PRAYER_CAPE, ItemID.PRAYER_CAPET, ItemID.PRAYER_CAPE_10643, ItemID.MAX_CAPE, ItemID.MAX_CAPE_13282,
-		ItemID.MAX_CAPE_13342, ItemID.HOLY_WRENCH, ItemID.RING_OF_THE_GODS_I);
+	RESTOREPOT(ItemID._4DOSE2RESTORE, ItemID._3DOSE2RESTORE, ItemID._2DOSE2RESTORE, ItemID._1DOSE2RESTORE,
+		ItemID.BLIGHTED_4DOSE2RESTORE, ItemID.BLIGHTED_3DOSE2RESTORE, ItemID.BLIGHTED_2DOSE2RESTORE,
+		ItemID.BLIGHTED_1DOSE2RESTORE),
+	PRAYERPOT(ItemID._4DOSEPRAYERRESTORE, ItemID._3DOSEPRAYERRESTORE, ItemID._2DOSEPRAYERRESTORE, ItemID._1DOSEPRAYERRESTORE,
+		ItemID.GAUNTLET_POTION_4, ItemID.GAUNTLET_POTION_3, ItemID.GAUNTLET_POTION_2, ItemID.GAUNTLET_POTION_1),
+	SANFEWPOT(ItemID.SANFEW_SALVE_4_DOSE, ItemID.SANFEW_SALVE_3_DOSE, ItemID.SANFEW_SALVE_2_DOSE, ItemID.SANFEW_SALVE_1_DOSE),
+	HOLYWRENCH(ItemID.SKILLCAPE_PRAYER, ItemID.SKILLCAPE_PRAYER_TRIMMED, ItemID.SKILLCAPE_MAX,
+		ItemID.SKILLCAPE_MAX_WORN, ItemID.DEAL_WRENCH_BLESSED, ItemID.NZONE_ROTG);
 
-	private static final Map<Integer, PrayerRestoreType> prayerRestores = new HashMap<>();
+	private static final Map<Integer, PrayerRestoreType> prayerRestores;
 
 	private final int[] items;
 
@@ -47,13 +50,15 @@ enum PrayerRestoreType
 
 	static
 	{
+		ImmutableMap.Builder<Integer, PrayerRestoreType> builder = new ImmutableMap.Builder<>();
 		for (PrayerRestoreType prayerRestoreType : values())
 		{
 			for (int itemId : prayerRestoreType.items)
 			{
-				prayerRestores.put(itemId, prayerRestoreType);
+				builder.put(itemId, prayerRestoreType);
 			}
 		}
+		prayerRestores = builder.build();
 	}
 
 	static PrayerRestoreType getType(final int itemId)

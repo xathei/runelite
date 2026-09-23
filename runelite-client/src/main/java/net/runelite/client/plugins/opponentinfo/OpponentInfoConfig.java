@@ -34,7 +34,7 @@ public interface OpponentInfoConfig extends Config
 	@ConfigItem(
 		keyName = "lookupOnInteraction",
 		name = "Lookup players on interaction",
-		description = "Display a combat stat comparison panel on player interaction. (follow, trade, challenge, attack, etc.)",
+		description = "Display a combat stat comparison panel on player interaction. (Follow, Trade, Challenge, Attack, etc.)",
 		position = 0
 	)
 	default boolean lookupOnInteraction()
@@ -43,23 +43,34 @@ public interface OpponentInfoConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "showPercent",
-		name = "Show percent",
-		description = "Shows hitpoints as a percentage even if hitpoints are known",
+		keyName = "hitpointsDisplayStyle",
+		name = "Display style",
+		description = "Show opponent's hitpoints as a value (if known), percentage, or both.",
 		position = 1
 	)
-	default boolean showPercent()
+	default HitpointsDisplayStyle hitpointsDisplayStyle()
+	{
+		return HitpointsDisplayStyle.HITPOINTS;
+	}
+
+	@ConfigItem(
+		keyName = "showOpponentsInMenu",
+		name = "Show opponents in menu",
+		description = "Marks opponents names in the menu which you are attacking or are attacking you (NPC only).",
+		position = 3
+	)
+	default boolean showOpponentsInMenu()
 	{
 		return false;
 	}
 
 	@ConfigItem(
-		keyName = "showOpponentsOpponent",
-		name = "Show opponent's opponent",
-		description = "Toggle showing opponent's opponent if within a multi-combat area",
-		position = 2
+		keyName = "showOpponentHealthOverlay",
+		name = "Show opponent health overlay",
+		description = "Shows a health bar overlay when a boss health overlay is not present.",
+		position = 4
 	)
-	default boolean showOpponentsOpponent()
+	default boolean showOpponentHealthOverlay()
 	{
 		return true;
 	}
